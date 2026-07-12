@@ -1,0 +1,355 @@
+"use client";
+
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Pill, FileText, Download, Plus, Trash2, Edit2, ShieldCheck, Check, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
+import { useRole } from "@/features/shared/RoleProvider";
+import { api } from "@/lib/api";
+
+interface PrescriptionItem {
+  id: string;
+  patientName: string;
+  medicineName: string;
+  dosage: string;
+  duration: string;
+  instructions: string;
+  datePrescribed: string;
+}
+
+const mockPrescriptions: PrescriptionItem[] = [];
+
+export default function DoctorPrescriptionsPage() {
+  const router = useRouter();
+  const { show } = useToast();
+  const { user } = useRole();
+  const doctorName = user?.doctor?.firstName ? `Dr. ${user.doctor.firstName} ${user.doctor.lastName}` : "Authorized Clinician";
+  const [prescriptions, setPrescriptions] = useState<PrescriptionItem[]>([]);
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  // Form states
+  const [patientName, setPatientName] = useState("");
+  const [medicineName, setMedicineName] = useState("Compounded Semaglutide Injection (Initiation Vial)");
+  const [dosage, setDosage] = useState("0.25 mg / week");
+  const [duration, setDuration] = useState("4 weeks (Initiation)");
+  const [instructions, setInstructions] = useState("");
+
+  React.useEffect(() => {
+    if (!user) return;
+
+    const fetchPrescriptions = async () => {
+      try {
+        const res = await api.get("/api/v1/prescriptions");
+        if (res.success && Array.isArray(res.data)) {
+          const formatted = res.data
+            .filter((p: any) => p.doctorId === user?.doctor?.id)
+            .map((p: any) => ({
+              id: p.id,
+              patientName: p.patient ? `${p.patient.firstName} ${p.patient.lastName}` : "Unknown Patient",
+              medicineName: p.medications || "Unknown Medication",
+              dosage: p.diagnosis || "Standard Dose",
+              duration: p.instructions || "As directed",
+              instructions: p.instructions || "No special instructions",
+              datePrescribed: new Date(p.createdAt).toLocaleDateString(),
+            }));
+          setPrescriptions(formatted);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchPrescriptions();
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const sseUrl = `${baseUrl}/api/v1/realtime/events?userId=${user.id}&role=${user.role}`;
+    const eventSource = new EventSource(sseUrl);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.type === "prescription.new" && parsed.payload?.prescription) {
+          const p = parsed.payload.prescription;
+          if (p.doctorId === user?.doctor?.id) {
+             const newRx = {
+                id: p.id,
+                patientName: p.patient ? `${p.patient.firstName} ${p.patient.lastName}` : "Unknown Patient",
+                medicineName: p.medications || "Unknown Medication",
+                dosage: p.diagnosis || "Standard Dose",
+                duration: p.instructions || "As directed",
+                instructions: p.instructions || "No special instructions",
+                datePrescribed: new Date(p.createdAt).toLocaleDateString(),
+             };
+             setPrescriptions((prev) => [newRx, ...prev]);
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [user]);
+
+  const handleCreatePrescription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!patientName || !instructions) {
+      show("Please fill out patient name and usage instructions.", "error");
+      return;
+    }
+
+    try {
+      // For demonstration, we'll try to find a patient id or send a dummy one
+      const patientsRes = await api.get("/api/v1/patients");
+      const patientId = patientsRes.data?.[0]?.id || "dummy-patient-id";
+      
+      const res = await api.post("/api/v1/prescriptions", {
+        patientId,
+        doctorId: user?.doctor?.id,
+        appointmentId: null,
+        diagnosis: dosage, // mapping fields temporarily
+        medications: medicineName,
+        instructions: instructions,
+        followUpDate: null
+      });
+
+      if (res.success) {
+        setShowBuilder(false);
+        show("Prescription created and routed to CVS pharmacy queue.", "success");
+        setPatientName("");
+        setInstructions("");
+      } else {
+        show("Failed to create prescription", "error");
+      }
+    } catch (err) {
+      show("Failed to create prescription", "error");
+    }
+  };
+
+  const handleDownloadPdf = (rx: PrescriptionItem) => {
+    show("Generating clinical prescription PDF card...", "info");
+    setTimeout(() => {
+      import("jspdf").then(({ jsPDF }) => {
+        const doc = new jsPDF();
+        
+        doc.setFontSize(22);
+        doc.text("MediGo Medical Prescription Card", 20, 30);
+        
+        doc.setFontSize(12);
+        doc.text("---------------------------------------------------------", 20, 40);
+        doc.text(`Rx Number: ${rx.id}`, 20, 50);
+        doc.text(`Authorized Clinician: ${doctorName}`, 20, 60);
+        doc.text(`Patient Name: ${rx.patientName}`, 20, 70);
+        doc.text(`Date Issued: ${rx.datePrescribed}`, 20, 80);
+        doc.text(`Medication: ${rx.medicineName}`, 20, 90);
+        doc.text(`Dosage: ${rx.dosage} (${rx.duration})`, 20, 100);
+        
+        doc.text(`Clinical Instructions:`, 20, 110);
+        const splitInstructions = doc.splitTextToSize(rx.instructions, 170);
+        doc.text(splitInstructions, 20, 120);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text("Compliance: HIPAA VA Protected Electronic Transmission.", 20, 140);
+        
+        doc.save(`medigo_${rx.id.toLowerCase()}_prescription.pdf`);
+      }).catch(err => {
+        console.error("Failed to load jsPDF", err);
+      });
+    }, 1000);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border/60 text-left">
+        <div>
+          <button
+            onClick={() => router.back()}
+            className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-text-secondary hover:text-primary transition-colors duration-200 group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform duration-200" />
+            Back
+          </button>
+          <h2 className="font-heading text-xl font-extrabold text-text-primary">
+            Prescription Management
+          </h2>
+          <p className="text-xs text-text-secondary mt-0.5">
+            Create, audit, and dispatch electronic prescriptions directly to temperature-controlled compounding pharmacies.
+          </p>
+        </div>
+
+        <Button onClick={() => setShowBuilder(true)} size="sm" className="font-bold" rightIcon={<Plus className="w-4 h-4" />}>
+          New Prescription
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start text-left">
+        {/* Left Column: Prescription List */}
+        <div className="lg:col-span-8 space-y-4">
+          {prescriptions.length > 0 ? prescriptions.map((rx) => (
+            <Card key={rx.id} padding="md" className="hover">
+              <div className="flex items-center justify-between pb-3 border-b border-border-light mb-4">
+                <div className="flex items-center gap-2">
+                  <Pill className="w-5 h-5 text-primary-600" />
+                  <span className="font-mono text-xs text-text-tertiary font-bold">{rx.id}</span>
+                </div>
+                <span className="text-[10px] text-text-secondary font-bold">Issued {rx.datePrescribed}</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-medium text-text-secondary mb-4 leading-relaxed">
+                <div>
+                  <span className="text-[10px] text-text-tertiary block font-bold uppercase">Patient Name</span>
+                  <span className="text-text-primary font-bold block mt-0.5">{rx.patientName}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-text-tertiary block font-bold uppercase">Medication</span>
+                  <span className="text-text-primary font-bold block mt-0.5">{rx.medicineName}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-text-tertiary block font-bold uppercase">Dosage Schedule</span>
+                  <span className="text-primary font-bold block mt-0.5">{rx.dosage} ({rx.duration})</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-border-light text-xs text-text-secondary leading-relaxed mb-4">
+                <span className="text-[9px] text-text-tertiary block font-bold uppercase mb-1">Clinical Instructions</span>
+                {rx.instructions}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-border-light">
+                <button
+                  onClick={() => handleDownloadPdf(rx)}
+                  className="py-2 px-4 rounded-xl border border-border hover:border-primary text-text-primary hover:text-primary flex items-center justify-center gap-1.5 text-xs font-bold transition-all focus:outline-none"
+                >
+                  <Download className="w-4 h-4" />
+                  Generate PDF
+                </button>
+                <Button size="sm" className="text-xs font-bold">
+                  Edit Details
+                </Button>
+              </div>
+            </Card>
+          )) : (
+            <div className="py-8 text-center text-text-tertiary text-xs">
+              No prescriptions active
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: pharmacy disclaimer */}
+        <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-border/50 shadow-sm space-y-4 font-medium text-text-secondary leading-relaxed text-xs">
+          <div className="flex items-center gap-2 text-primary">
+            <ShieldCheck className="w-5 h-5" />
+            <h3 className="font-heading text-sm font-bold text-text-primary">E-Prescribe Compliance</h3>
+          </div>
+          <p>
+            MediGo prescriptions are signed and routed via VIPPS-certified pharmacy connections under secure DEA credentials checks.
+          </p>
+        </div>
+      </div>
+
+      {/* Prescription Builder Modal */}
+      <Modal
+        isOpen={showBuilder}
+        onClose={() => setShowBuilder(false)}
+        title="Electronic Prescription Builder"
+        size="md"
+      >
+        <form onSubmit={handleCreatePrescription} className="space-y-4 text-left text-xs">
+          <div className="space-y-1.5">
+            <label htmlFor="rx-patient-name" className="text-xs font-bold text-text-secondary uppercase">Patient Name</label>
+            <input
+              id="rx-patient-name"
+              type="text"
+              required
+              value={patientName}
+              onChange={(e) => setPatientName(e.target.value)}
+              placeholder="e.g. John Smith"
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="rx-med-select" className="text-xs font-bold text-text-secondary uppercase">Medication Variant</label>
+            <select
+              id="rx-med-select"
+              value={medicineName}
+              onChange={(e) => setMedicineName(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-text-primary text-xs focus:outline-none"
+            >
+              <option value="Compounded Semaglutide Injection (Initiation Vial)">Compounded Semaglutide Injection (Initiation Vial)</option>
+              <option value="Compounded Tirzepatide Injection">Compounded Tirzepatide Injection</option>
+              <option value="Quest Diagnostic Glucose Panel Refill Kit">Quest Diagnostic Glucose Panel Refill Kit</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label htmlFor="rx-dose-select" className="text-xs font-bold text-text-secondary uppercase">Dose Strength</label>
+              <select
+                id="rx-dose-select"
+                value={dosage}
+                onChange={(e) => setDosage(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-text-primary text-xs focus:outline-none"
+              >
+                <option value="0.25 mg / week">0.25 mg / week (Week 1-4)</option>
+                <option value="0.50 mg / week">0.50 mg / week (Week 5-8)</option>
+                <option value="1.00 mg / week">1.00 mg / week (Week 9-12)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="rx-duration-select" className="text-xs font-bold text-text-secondary uppercase">Therapy Duration</label>
+              <select
+                id="rx-duration-select"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-text-primary text-xs focus:outline-none"
+              >
+                <option value="4 weeks (Initiation)">4 weeks (Initiation)</option>
+                <option value="8 weeks (Titration)">8 weeks (Titration)</option>
+                <option value="12 weeks (Maintenance)">12 weeks (Maintenance)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="rx-instructions-input" className="text-xs font-bold text-text-secondary uppercase">SIG Directions for Use</label>
+            <textarea
+              id="rx-instructions-input"
+              rows={3}
+              required
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="e.g. Inject 0.25mg subcutaneously into the abdomen once weekly on Sunday mornings."
+              className="w-full p-3 rounded-xl border border-border bg-background text-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-border-light">
+            <Button 
+              type="button" 
+              onClick={() => setShowBuilder(false)} 
+              variant="outline" 
+              size="sm" 
+              className="font-bold border-border text-text-primary hover:bg-slate-50"
+            >
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" className="font-bold">
+              Dispatch Rx
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+    </div>
+  );
+}

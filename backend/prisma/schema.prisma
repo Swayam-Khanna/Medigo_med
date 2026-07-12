@@ -1,0 +1,537 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  Patient
+  Doctor
+  Admin
+  Pharmacy
+  Lab
+}
+
+enum PatientStatus {
+  Active
+  Deactivated
+  PendingIntake
+}
+
+enum DoctorStatus {
+  Verified
+  PendingCredentials
+  Suspended
+}
+
+enum ConnectionStatus {
+  Active
+  Pending
+  Completed
+  Revoked
+}
+
+enum AppointmentStatus {
+  Pending
+  Confirmed
+  Completed
+  Cancelled
+  NoShow
+}
+
+enum MembershipStatus {
+  Active
+  Expired
+  Cancelled
+  Pending
+}
+
+enum PaymentStatus {
+  Pending
+  Paid
+  Failed
+  Refunded
+}
+
+enum PrescriptionStatus {
+  Active
+  Refilled
+  Cancelled
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  role               UserRole  @default(Patient)
+  email              String    @unique
+  phone              String?
+  isVerified         Boolean   @default(false)
+  status             String    @default("Active")
+  lastLogin          DateTime?
+  passwordHash       String?
+  failedOtpAttempts  Int       @default(0)
+  lockedUntil        DateTime?
+  repeatedAbuseCount Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime? // Soft delete support
+
+  patient       Patient?
+  doctor        Doctor?
+  notifications Notification[]
+  sessions      Session[]
+  messages      Message[]
+
+  @@index([email])
+  @@index([phone])
+  @@map("users")
+}
+
+model Patient {
+  id               String        @id @default(uuid())
+  userId           String        @unique
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName        String
+  lastName         String
+  dob              DateTime?
+  gender           String?
+  height           Float?
+  weight           Float?
+  bloodGroup       String?
+  emergencyContact String?
+  profileImage     String?
+  status           PatientStatus @default(PendingIntake)
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  appointments  Appointment[]
+  memberships   Membership[]
+  prescriptions Prescription[]
+  assessments   Assessment[]
+  orders        Order[]
+  weightLogs    WeightLog[]
+  connections   DoctorPatientConnection[]
+
+  @@map("patients")
+}
+
+model Doctor {
+  id                 String       @id @default(uuid())
+  userId             String       @unique
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName          String       @default("") // Keep names consistent with Patient model
+  lastName           String       @default("")
+  specialization     String
+  qualification      String?
+  experience         String
+  licenseNumber      String?
+  hospital           String?
+  bio                String?
+  profileImage       String?
+  consultationFee    Float        @default(0)
+  bankName           String?
+  accountNumber      String?
+  ifscCode           String?
+  razorpayAccountId  String?
+  availabilityStatus String       @default("Available")
+  status             DoctorStatus @default(PendingCredentials)
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  appointments  Appointment[]
+  prescriptions Prescription[]
+  connections   DoctorPatientConnection[]
+
+  @@map("doctors")
+}
+
+model DoctorPatientConnection {
+  id        String           @id @default(uuid())
+  doctorId  String
+  patientId String
+  status    ConnectionStatus @default(Active)
+
+  doctor  Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([doctorId, patientId])
+  @@map("doctor_patient_connections")
+}
+
+model Appointment {
+  id               String            @id @default(uuid())
+  patientId        String
+  patient          Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId         String
+  doctor           Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointmentDate  String
+  appointmentTime  String
+  consultationType String
+  status           AppointmentStatus @default(Pending)
+  paymentStatus    PaymentStatus     @default(Pending)
+  paymentId        String?
+  notes            String?
+  meetingLink      String?
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  prescription Prescription?
+  consultation Consultation?
+  messages     Message[]
+
+  @@index([appointmentDate])
+  @@index([doctorId])
+  @@index([patientId])
+  @@map("appointments")
+}
+
+model Assessment {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  assessmentScore Float
+  bmi             Float
+  result          String
+  recommendation  String
+  submittedAt     DateTime @default(now())
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@index([patientId])
+  @@map("assessments")
+}
+
+model Prescription {
+  id            String             @id @default(uuid())
+  appointmentId String?            @unique
+  appointment   Appointment?       @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  doctorId      String
+  doctor        Doctor             @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  diagnosis     String?
+  medications   String?
+  instructions  String?
+  followUpDate  DateTime?
+  status        PrescriptionStatus @default(Active)
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@index([doctorId])
+  @@index([patientId])
+  @@map("prescriptions")
+}
+
+model Membership {
+  id         String           @id @default(uuid())
+  patientId  String
+  patient    Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  planName   String
+  startDate  DateTime
+  expiryDate DateTime
+  status     MembershipStatus @default(Pending)
+  price      Float
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@index([patientId])
+  @@index([status])
+  @@map("memberships")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model Message {
+  id            String      @id @default(uuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  senderId      String
+  sender        User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  text          String
+  createdAt     DateTime    @default(now())
+
+  @@index([appointmentId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model CMSPage {
+  id              String  @id @default(uuid())
+  title           String
+  slug            String  @unique
+  content         String
+  seoTitle        String?
+  metaDescription String?
+  status          String  @default("Draft")
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@index([slug])
+  @@map("cms_pages")
+}
+
+model Blog {
+  id            String    @id @default(uuid())
+  title         String
+  slug          String    @unique
+  featuredImage String?
+  content       String
+  category      String
+  author        String
+  publishedAt   DateTime?
+  status        String    @default("Draft")
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@index([slug])
+  @@map("blogs")
+}
+
+model FAQ {
+  id       String @id @default(uuid())
+  question String
+  answer   String
+  category String
+  status   String @default("Active")
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@map("faqs")
+}
+
+model Media {
+  id         String  @id @default(uuid())
+  fileName   String
+  fileType   String
+  fileSize   Int
+  url        String
+  uploadedBy String?
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  @@map("media_library")
+}
+
+model OTPCode {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  hashedOtp    String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  resends      Int      @default(0)
+  lastResentAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@map("otp_codes")
+}
+
+model Session {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenFamily        String   @default(uuid())
+  hashedRefreshToken String?
+  device             String?
+  browser            String?
+  ipAddress          String?
+  loginTime          DateTime @default(now())
+  lastActivity       DateTime @default(now())
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("sessions")
+}
+
+model Product {
+  id          String  @id @default(uuid())
+  name        String
+  description String
+  price       Float
+  stock       Int     @default(0)
+  imageUrl    String?
+  category    String?
+  isActive    Boolean @default(true)
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id              String  @id @default(uuid())
+  patientId       String
+  patient         Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  totalAmount     Float
+  status          String  @default("Pending") // Pending, Paid, Shipped, Delivered, Cancelled
+  paymentId       String?
+  paymentMethod   String  @default("Razorpay")
+  shippingAddress String?
+
+  // Audits
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  items OrderItem[]
+
+  @@index([patientId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int
+  price     Float
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model Consultation {
+  id                      String      @id @default(uuid())
+  appointmentId           String      @unique
+  appointment             Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patientId               String
+  doctorId                String
+  chiefComplaint          String
+  diagnosis               String
+  clinicalFindings        String
+  treatmentRecommendation String // "Approved for Treatment" | "Requires Further Evaluation" | "Treatment Rejected"
+  lifestyleAdvice         String?
+  dietRecommendation      String?
+  exerciseRecommendation  String?
+  followUpDate            DateTime?
+  additionalNotes         String?
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@map("consultations")
+}
+
+model Review {
+  id                String  @id @default(uuid())
+  patientName       String
+  age               Int
+  profileImage      String?
+  beforeImage       String?
+  afterImage        String?
+  weightLossKg      Float
+  durationMonths    Int
+  reviewText        String
+  rating            Int // 1 to 5
+  isSelectedForHome Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rating])
+  @@index([isSelectedForHome])
+  @@map("reviews")
+}
+
+model WeightLog {
+  id        String   @id @default(uuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  weight    Float
+  date      DateTime @default(now())
+
+  @@index([patientId])
+  @@index([date])
+  @@map("weight_logs")
+}
