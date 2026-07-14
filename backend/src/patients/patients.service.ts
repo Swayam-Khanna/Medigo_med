@@ -15,9 +15,9 @@ export class PatientsService {
     return this.prisma.patient.findMany({
       where: { deletedAt: null },
       include: {
-        appointments: true,
-        memberships: true,
-        prescriptions: true,
+        appointments: { orderBy: { createdAt: 'desc' } },
+        memberships: { orderBy: { createdAt: 'desc' } },
+        prescriptions: { orderBy: { createdAt: 'desc' } },
       },
     });
   }
@@ -26,9 +26,9 @@ export class PatientsService {
     const patient = await this.prisma.patient.findFirst({
       where: { id, deletedAt: null },
       include: {
-        appointments: true,
-        memberships: true,
-        prescriptions: true,
+        appointments: { orderBy: { createdAt: 'desc' } },
+        memberships: { orderBy: { createdAt: 'desc' } },
+        prescriptions: { orderBy: { createdAt: 'desc' } },
       },
     });
 

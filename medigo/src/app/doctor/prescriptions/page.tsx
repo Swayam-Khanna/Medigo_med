@@ -32,7 +32,8 @@ export default function DoctorPrescriptionsPage() {
   const [showBuilder, setShowBuilder] = useState(false);
 
   // Form states
-  const [patientName, setPatientName] = useState("");
+  const [patientId, setPatientId] = useState("");
+  const [patientsList, setPatientsList] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
   const [medicineName, setMedicineName] = useState("Compounded Semaglutide Injection (Initiation Vial)");
   const [dosage, setDosage] = useState("0.25 mg / week");
   const [duration, setDuration] = useState("4 weeks (Initiation)");
@@ -41,21 +42,39 @@ export default function DoctorPrescriptionsPage() {
   React.useEffect(() => {
     if (!user) return;
 
+    const fetchPatients = async () => {
+      try {
+        const res = await api.get("/api/v1/doctor/patients");
+        if (res.success && Array.isArray(res.data)) {
+          setPatientsList(res.data);
+          if (res.data.length > 0) {
+            setPatientId(res.data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch doctor patients", err);
+      }
+    };
+    fetchPatients();
+
     const fetchPrescriptions = async () => {
       try {
         const res = await api.get("/api/v1/prescriptions");
         if (res.success && Array.isArray(res.data)) {
           const formatted = res.data
             .filter((p: any) => p.doctorId === user?.doctor?.id)
-            .map((p: any) => ({
-              id: p.id,
-              patientName: p.patient ? `${p.patient.firstName} ${p.patient.lastName}` : "Unknown Patient",
-              medicineName: p.medications || "Unknown Medication",
-              dosage: p.diagnosis || "Standard Dose",
-              duration: p.instructions || "As directed",
-              instructions: p.instructions || "No special instructions",
-              datePrescribed: new Date(p.createdAt).toLocaleDateString(),
-            }));
+            .map((p: any) => {
+              const diagParts = (p.diagnosis || "Standard Dose").split(" | ");
+              return {
+                id: p.id,
+                patientName: p.patient ? `${p.patient.firstName} ${p.patient.lastName}` : "Unknown Patient",
+                medicineName: p.medications || "Unknown Medication",
+                dosage: diagParts[0] || "Standard Dose",
+                duration: diagParts[1] || "As directed",
+                instructions: p.instructions || "No special instructions",
+                datePrescribed: new Date(p.createdAt).toLocaleDateString(),
+              };
+            });
           setPrescriptions(formatted);
         }
       } catch (err) {
@@ -72,15 +91,16 @@ export default function DoctorPrescriptionsPage() {
     eventSource.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed.type === "prescription.new" && parsed.payload?.prescription) {
-          const p = parsed.payload.prescription;
+        if (parsed.event === "prescription.new" && parsed.data?.prescription) {
+          const p = parsed.data.prescription;
           if (p.doctorId === user?.doctor?.id) {
+             const diagParts = (p.diagnosis || "Standard Dose").split(" | ");
              const newRx = {
                 id: p.id,
                 patientName: p.patient ? `${p.patient.firstName} ${p.patient.lastName}` : "Unknown Patient",
                 medicineName: p.medications || "Unknown Medication",
-                dosage: p.diagnosis || "Standard Dose",
-                duration: p.instructions || "As directed",
+                dosage: diagParts[0] || "Standard Dose",
+                duration: diagParts[1] || "As directed",
                 instructions: p.instructions || "No special instructions",
                 datePrescribed: new Date(p.createdAt).toLocaleDateString(),
              };
@@ -99,21 +119,17 @@ export default function DoctorPrescriptionsPage() {
 
   const handleCreatePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!patientName || !instructions) {
-      show("Please fill out patient name and usage instructions.", "error");
+    if (!patientId || !instructions) {
+      show("Please select a patient and fill out usage instructions.", "error");
       return;
     }
 
     try {
-      // For demonstration, we'll try to find a patient id or send a dummy one
-      const patientsRes = await api.get("/api/v1/patients");
-      const patientId = patientsRes.data?.[0]?.id || "dummy-patient-id";
-      
       const res = await api.post("/api/v1/prescriptions", {
         patientId,
         doctorId: user?.doctor?.id,
         appointmentId: null,
-        diagnosis: dosage, // mapping fields temporarily
+        diagnosis: `${dosage} | ${duration}`,
         medications: medicineName,
         instructions: instructions,
         followUpDate: null
@@ -122,7 +138,6 @@ export default function DoctorPrescriptionsPage() {
       if (res.success) {
         setShowBuilder(false);
         show("Prescription created and routed to CVS pharmacy queue.", "success");
-        setPatientName("");
         setInstructions("");
       } else {
         show("Failed to create prescription", "error");
@@ -225,13 +240,14 @@ export default function DoctorPrescriptionsPage() {
 
               <div className="flex justify-end gap-3 pt-3 border-t border-border-light">
                 <button
+                  type="button"
                   onClick={() => handleDownloadPdf(rx)}
                   className="py-2 px-4 rounded-xl border border-border hover:border-primary text-text-primary hover:text-primary flex items-center justify-center gap-1.5 text-xs font-bold transition-all focus:outline-none"
                 >
                   <Download className="w-4 h-4" />
                   Generate PDF
                 </button>
-                <Button size="sm" className="text-xs font-bold">
+                <Button size="sm" className="text-xs font-bold" type="button">
                   Edit Details
                 </Button>
               </div>
@@ -265,15 +281,18 @@ export default function DoctorPrescriptionsPage() {
         <form onSubmit={handleCreatePrescription} className="space-y-4 text-left text-xs">
           <div className="space-y-1.5">
             <label htmlFor="rx-patient-name" className="text-xs font-bold text-text-secondary uppercase">Patient Name</label>
-            <input
+            <select
               id="rx-patient-name"
-              type="text"
               required
-              value={patientName}
-              onChange={(e) => setPatientName(e.target.value)}
-              placeholder="e.g. John Smith"
+              value={patientId}
+              onChange={(e) => setPatientId(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+            >
+              <option value="" disabled>Select a patient</option>
+              {patientsList.map(p => (
+                <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
+              ))}
+            </select>
           </div>
 
           <div className="space-y-1.5">

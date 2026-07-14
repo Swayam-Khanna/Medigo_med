@@ -34,7 +34,7 @@ export function PrescriptionsTab() {
         const res = await api.get("/api/v1/prescriptions");
         if (res.success && Array.isArray(res.data)) {
           const formatted = res.data
-            .filter((p: any) => p.patientId === user?.patient?.id)
+            .filter((p: any) => p.patientId === user?.patient?.id && p.status === 'Active')
             .map((p: any) => ({
               id: p.id,
               name: p.medications || "Unknown Medication",
@@ -61,8 +61,8 @@ export function PrescriptionsTab() {
     eventSource.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed.type === "prescription.new" && parsed.payload?.prescription) {
-          const p = parsed.payload.prescription;
+        if (parsed.event === "prescription.new" && parsed.data?.prescription) {
+          const p = parsed.data.prescription;
           if (p.patientId === user?.patient?.id) {
              const newMed = {
                 id: p.id,

@@ -18,7 +18,7 @@ export function MembershipTab() {
 
   const memberships = user?.patient?.memberships || [];
   const hasMembership = memberships.length > 0;
-  const activeMembership = hasMembership ? memberships[0] : null;
+  const activeMembership = memberships.find((m: any) => m.status === 'Active') || (hasMembership ? memberships[0] : null);
 
   const invoices: Invoice[] = [
     { id: "INV-2026-004", date: "June 25, 2026", amount: 149, status: "paid" },
@@ -70,7 +70,7 @@ export function MembershipTab() {
                   You need an active program membership to request medication refills, access your AI coach, and book physician consultations.
                 </p>
               </div>
-              <Link href="/dashboard/membership/buy">
+              <Link href="/pricing">
                 <Button className="px-8 shadow-glow" rightIcon={<ArrowRight className="w-4 h-4" />}>
                   Buy Membership
                 </Button>
@@ -134,14 +134,36 @@ export function MembershipTab() {
                 <h3 className="font-heading font-bold text-base text-text-primary">Included Plan Benefits</h3>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-text-secondary">
-                  {[
+                  {(activeMembership?.planName?.toLowerCase().includes("6-months") ? [
+                    "6 Months Continuous Doctor Care",
+                    "Dedicated Care Coordinator",
+                    "Weekly Progress Reviews",
+                    "Unlimited Doctor Follow-up Messages",
+                    "Personalised diet plan every week",
+                    "Personalised workout plan every week",
+                    "Advanced Nutrition Coaching",
+                    "Lifestyle Coaching",
+                    "Free Lab Report Reviews",
+                    "Fast-Track Appointment Priority",
+                    "Premium Customer Support",
+                  ] : activeMembership?.planName?.toLowerCase().includes("3-months") ? [
+                    "3 Months Continuous Doctor Care",
+                    "Monthly Doctor Follow-ups",
+                    "Unlimited AI Progress Check-ins",
+                    "Personalised diet plan every 15 days",
+                    "Personalised workout plan every 15 days",
+                    "WhatsApp Priority Support",
+                    "Prescription Renewals",
+                    "Priority Appointment Booking",
+                    "Progress Reports",
+                  ] : [
                     "1x Monthly Doctor Consultation video check-ins",
                     "Unlimited asynchronous clinical secure chat support",
                     "Prescription routing (Semaglutide cold-chain shipments)",
                     "AI Coach log monitors & activity tracking",
                     "HIPAA encrypted lab diagnostics vault",
                     "Metabolic milestone achievement program",
-                  ].map((benefit, idx) => (
+                  ]).map((benefit, idx) => (
                     <div key={idx} className="flex gap-2.5 items-start">
                       <CheckCircle2 className="w-4.5 h-4.5 text-primary shrink-0 mt-0.5" />
                       <span>{benefit}</span>

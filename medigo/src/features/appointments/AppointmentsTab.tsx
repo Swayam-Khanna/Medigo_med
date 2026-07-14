@@ -26,6 +26,7 @@ export function AppointmentsTab() {
   const [rescheduleDate, setRescheduleDate] = useState("July 5, 2026");
   const [rescheduleTime, setRescheduleTime] = useState("1:30 PM");
   const [successMsg, setSuccessMsg] = useState("");
+  const { show } = useToast();
 
   const fetchAppointments = async () => {
     try {
@@ -56,7 +57,31 @@ export function AppointmentsTab() {
 
   useEffect(() => {
     fetchAppointments();
-  }, []);
+
+    const userStr = localStorage.getItem("medigo_user");
+    if (!userStr) return;
+    const userObj = JSON.parse(userStr);
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const sseUrl = `${baseUrl}/api/v1/realtime/events?userId=${userObj.id}&role=${userObj.role}`;
+    const eventSource = new EventSource(sseUrl);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.event === "consultation.doctor_waiting") {
+          show("The doctor is waiting for you in the consultation room! Please join now.", "success");
+        } else if (parsed.event === "consultation.link_shared") {
+          show("Your doctor has shared a meeting link for your consultation.", "success");
+          fetchAppointments();
+        } else if (parsed.event === "appointment.rescheduled") {
+          show("Your appointment has been rescheduled by the doctor.", "warning");
+          fetchAppointments();
+        }
+      } catch (e) {}
+    };
+
+    return () => eventSource.close();
+  }, [show]);
 
   const handleConfirmReschedule = () => {
     const updated = appointments.map((apt) => {
@@ -163,15 +188,13 @@ export function AppointmentsTab() {
                   </button>
                 </div>
 
-                <a
-                  href={activeApt.meetingLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => window.location.href = `/consultation/room/${activeApt.id}`}
                   className="py-2.5 px-6 rounded-xl gradient-cta text-white text-xs font-bold hover:shadow-glow transition-all flex items-center justify-center gap-1.5 w-full sm:w-auto"
                 >
                   <Video className="w-4 h-4" />
-                  Join Zoom Room
-                </a>
+                  Join Consultation Room
+                </button>
               </div>
 
             </div>

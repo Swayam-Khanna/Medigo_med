@@ -27,10 +27,17 @@ export function WeightTracker() {
     try {
       const data = await api.get("/api/v1/patient/weight-logs");
       if (data.data) {
-        setLogs(data.data.map((l: any) => ({
+        const fetchedLogs = data.data.map((l: any) => ({
           date: new Date(l.date).toLocaleDateString("en-US", { month: "long", day: "2-digit", year: "numeric" }),
           weight: l.weight
-        })));
+        }));
+        setLogs(fetchedLogs);
+        
+        if (fetchedLogs.length > 0) {
+          setInputWeight(fetchedLogs[fetchedLogs.length - 1].weight.toString());
+        } else if (user?.patient?.weight) {
+          setInputWeight(user.patient.weight.toString());
+        }
       }
     } catch (err) {
       console.error("Error fetching weight logs:", err);
@@ -52,7 +59,6 @@ export function WeightTracker() {
       
       if (res.success) {
         setSuccessMsg("Weight logged successfully!");
-        setInputWeight("");
         fetchLogs();
         setTimeout(() => setSuccessMsg(""), 3000);
       } else {
@@ -119,6 +125,12 @@ export function WeightTracker() {
   return (
     <div className="space-y-8 text-left">
       
+      {/* Daily reminder banner */}
+      <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-xs font-semibold flex items-center gap-3 border border-blue-100">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-100 px-2 py-0.5 rounded">medigo</span>
+        <span>Reminder: Please update your weight daily to accurately track your current weight loss progress and BMI.</span>
+      </div>
+
       {/* Metrics overview widgets */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         

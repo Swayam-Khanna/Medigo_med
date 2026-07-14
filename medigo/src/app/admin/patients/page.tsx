@@ -36,8 +36,8 @@ export default function AdminPatientsPage() {
             name: `${p.firstName} ${p.lastName || ""}`.trim(),
             email: p.user?.email || "N/A",
             phone: p.phone || "N/A",
-            membership: p.memberships?.length > 0 ? p.memberships[0].planName : "None",
-            status: p.user?.status === "Deactivated" ? "Deactivated" : (p.memberships?.length > 0 ? "Active" : "Pending Intake"),
+            membership: p.memberships?.find((m: any) => m.status === 'Active')?.planName || (p.memberships?.length > 0 ? p.memberships[0].planName : "None"),
+            status: p.user?.status === "Deactivated" ? "Deactivated" : (p.memberships?.find((m: any) => m.status === 'Active') ? "Active" : "Pending Intake"),
             joinedDate: new Date(p.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
           }));
           setPatients(mapped);

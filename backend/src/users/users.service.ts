@@ -20,7 +20,9 @@ export class UsersService {
         createdAt: true,
         patient: {
           include: {
-            memberships: true,
+            memberships: {
+              orderBy: { createdAt: 'desc' }
+            },
           },
         },
         doctor: true,

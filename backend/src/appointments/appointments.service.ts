@@ -74,6 +74,25 @@ export class AppointmentsService {
     return appointment;
   }
 
+  async pingPatient(id: string) {
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id, deletedAt: null },
+      include: { patient: true },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException('Appointment record not found');
+    }
+
+    this.realtimeService.emit('consultation.doctor_waiting', {
+      appointmentId: appointment.id,
+      patientId: appointment.patient.id,
+      patientUserId: appointment.patient.userId,
+    });
+
+    return appointment;
+  }
+
   async createForUser(
     userId: string,
     doctorId: string,
@@ -143,6 +162,16 @@ export class AppointmentsService {
         targetUserId: doctor.userId,
         notification: notif,
       });
+
+      this.realtimeService.emit('doctor.updated', {
+        targetUserId: doctor.userId,
+        doctorId: doctor.id,
+      });
+      this.realtimeService.emit('admin.updated', { role: 'Admin' });
+      this.realtimeService.emit('patient.updated', {
+        targetUserId: patient.userId,
+        patientId: patient.id,
+      });
     }
 
     return appointment;
@@ -176,21 +205,56 @@ export class AppointmentsService {
     updatedBy?: string,
   ) {
     const appointment = await this.findOne(id);
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: {
         appointmentDate,
         appointmentTime,
         updatedBy,
       },
+      include: { patient: true, doctor: true },
     });
+
+    if (updatedBy) {
+      this.realtimeService.emit('appointment.rescheduled', {
+        appointmentId: id,
+        appointmentDate,
+        appointmentTime,
+        patientUserId: appointment.patient.userId,
+      });
+
+      const notif = await this.prisma.notification.create({
+        data: {
+          userId: appointment.patient.userId,
+          title: 'Appointment Rescheduled',
+          message: `Your appointment with Dr. ${updated.doctor.lastName} has been rescheduled to ${appointmentDate} at ${appointmentTime}.`,
+          type: 'Reschedule',
+        },
+      });
+
+      this.realtimeService.emit('notification.new', {
+        targetUserId: appointment.patient.userId,
+        notification: notif,
+      });
+    }
+
+    return updated;
   }
 
   async updateMeetingLink(id: string, meetingLink: string) {
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: { meetingLink },
+      include: { patient: true },
     });
+
+    this.realtimeService.emit('consultation.link_shared', {
+      appointmentId: id,
+      meetingLink,
+      patientUserId: updated.patient.userId,
+    });
+
+    return updated;
   }
 
   async getMessages(appointmentId: string) {
@@ -206,7 +270,7 @@ export class AppointmentsService {
   }
 
   async createMessage(appointmentId: string, senderId: string, text: string) {
-    return this.prisma.message.create({
+    const message = await this.prisma.message.create({
       data: {
         appointmentId,
         senderId,
@@ -218,6 +282,22 @@ export class AppointmentsService {
         },
       },
     });
+
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: { patient: true, doctor: true },
+    });
+
+    if (appointment) {
+      this.realtimeService.emit('chat.new_message', {
+        appointmentId,
+        message,
+        patientUserId: appointment.patient.userId,
+        doctorUserId: appointment.doctor.userId,
+      });
+    }
+
+    return message;
   }
 
   async updateStatus(

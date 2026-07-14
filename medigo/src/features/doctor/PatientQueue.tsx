@@ -91,10 +91,10 @@ export function PatientQueue({ onSelectPatient }: { onSelectPatient: (patientId:
       render: (row) => {
         const isObese = row.bmi >= 30;
         return (
-          <div>
-            <span className="font-semibold text-text-primary text-xs">{row.bmi}</span>
+          <div className="flex flex-col">
+            <span className="text-text-primary font-bold">{row.bmi}</span>
             <span className={`text-[10px] block mt-0.5 font-bold ${isObese ? "text-red-500" : "text-amber-500"}`}>
-              {isObese ? "Obese Category" : "Overweight"}
+              {isObese ? "Severe Overweight" : "Overweight"}
             </span>
           </div>
         );

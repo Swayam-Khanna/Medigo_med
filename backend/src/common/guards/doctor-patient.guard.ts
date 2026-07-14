@@ -40,7 +40,6 @@ export class DoctorPatientGuard implements CanActivate {
       throw new ForbiddenException('Doctor profile not found.');
     }
 
-    // Check for an Active connection
     const connection = await this.prisma.doctorPatientConnection.findUnique({
       where: {
         doctorId_patientId: {
@@ -51,7 +50,17 @@ export class DoctorPatientGuard implements CanActivate {
     });
 
     if (!connection || connection.status !== 'Active') {
-      throw new ForbiddenException("You are not authorized to view this patient's records.");
+      const hasAppointment = await this.prisma.appointment.findFirst({
+        where: {
+          doctorId: doctor.id,
+          patientId: patientId,
+          deletedAt: null,
+        },
+      });
+
+      if (!hasAppointment) {
+        throw new ForbiddenException("You are not authorized to view this patient's records.");
+      }
     }
 
     return true;

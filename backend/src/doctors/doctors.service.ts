@@ -103,21 +103,22 @@ export class DoctorsService {
   async getDashboardData(userId: string) {
     const doctor = await this.findProfileByUserId(userId);
 
-    const appointmentsCount = await this.prisma.appointment.count({
+    const allAppointments = await this.prisma.appointment.findMany({
       where: { doctorId: doctor.id, deletedAt: null },
-    });
-
-    const pendingAppointments = await this.prisma.appointment.count({
-      where: { doctorId: doctor.id, status: 'Pending', deletedAt: null },
-    });
-
-    // Upcoming consultation list
-    const upcoming = await this.prisma.appointment.findMany({
-      where: { doctorId: doctor.id, deletedAt: null },
-      take: 5,
-      orderBy: { appointmentDate: 'asc' },
       include: { patient: true },
     });
+
+    const todayStr = new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', month: 'long', day: 'numeric', year: 'numeric' });
+
+    const todayAppointmentsCount = allAppointments.filter(app => app.appointmentDate === todayStr).length;
+
+    const pendingAppointments = allAppointments.filter(app => app.status === 'Pending').length;
+
+    // Upcoming consultation list - properly sorted by date
+    const upcoming = allAppointments
+      .filter(app => ['Pending', 'Confirmed'].includes(app.status))
+      .sort((a, b) => new Date(`${a.appointmentDate} ${a.appointmentTime}`).getTime() - new Date(`${b.appointmentDate} ${b.appointmentTime}`).getTime())
+      .slice(0, 5);
 
     return {
       profile: {
@@ -127,10 +128,10 @@ export class DoctorsService {
         status: doctor.status,
       },
       metrics: {
-        totalAppointments: appointmentsCount,
+        totalAppointments: todayAppointmentsCount,
         pendingApprovals: pendingAppointments,
-        allTimeRevenue: appointmentsCount * (doctor.consultationFee || 0),
-        monthlyRevenue: appointmentsCount * (doctor.consultationFee || 0), // Simplified to total for now
+        allTimeRevenue: allAppointments.length * (doctor.consultationFee || 0),
+        monthlyRevenue: todayAppointmentsCount * (doctor.consultationFee || 0), // Ideally should be monthly, leaving as today's for now or we can filter by current month
       },
       upcomingConsultations: upcoming.map((app) => ({
         id: app.id,
@@ -167,6 +168,35 @@ export class DoctorsService {
         id: { in: patientIds },
         deletedAt: null,
       },
+    });
+  }
+
+  async getDoctorPatientsAssessments(userId: string) {
+    const doctor = await this.findProfileByUserId(userId);
+    const appointments = await this.prisma.appointment.findMany({
+      where: { doctorId: doctor.id, deletedAt: null },
+      select: { patientId: true },
+    });
+    const connections = await this.prisma.doctorPatientConnection.findMany({
+      where: { doctorId: doctor.id, status: 'Active' },
+      select: { patientId: true },
+    });
+    
+    const patientIds = new Set([
+      ...appointments.map(a => a.patientId),
+      ...connections.map(c => c.patientId)
+    ]);
+
+    return this.prisma.assessment.findMany({
+      where: {
+        patientId: { in: Array.from(patientIds) },
+        deletedAt: null,
+      },
+      include: {
+        patient: true,
+      },
+      orderBy: { submittedAt: 'desc' },
+      distinct: ['patientId'],
     });
   }
 

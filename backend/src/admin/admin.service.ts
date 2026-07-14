@@ -105,7 +105,7 @@ export class AdminService {
   async getPatients() {
     return this.prisma.patient.findMany({
       where: { deletedAt: null },
-      include: { user: true, memberships: true },
+      include: { user: true, memberships: { orderBy: { createdAt: 'desc' } } },
     });
   }
 

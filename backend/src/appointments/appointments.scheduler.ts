@@ -57,7 +57,7 @@ export class AppointmentsScheduler {
         if (diffMins > 0 && diffMins <= 60 && diffMins % 10 === 0) {
           this.logger.log(`Appointment ${appt.id} is in ${diffMins} minutes. Alerting patient.`);
           
-          const doctorName = appt.doctor.user?.lastName ? `Dr. ${appt.doctor.user.lastName}` : `Dr. ${appt.doctor.firstName || 'Doctor'}`;
+          const doctorName = appt.doctor.lastName ? `Dr. ${appt.doctor.lastName}` : `Dr. ${appt.doctor.firstName || 'Doctor'}`;
           
           // Store notification in DB
           const notification = await this.prisma.notification.create({

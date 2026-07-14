@@ -29,7 +29,7 @@ export default function StorePage() {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   const memberships = user?.patient?.memberships || [];
-  const activeMembership = memberships.length > 0 ? memberships[0] : null;
+  const activeMembership = memberships.find((m: any) => m.status === 'Active') || (memberships.length > 0 ? memberships[0] : null);
   const planName = activeMembership?.planName?.toLowerCase() || "";
   const [modalReason, setModalReason] = useState<string | null>(null);
 
