@@ -15,6 +15,8 @@ export interface QueuePatient {
   status: "Waiting" | "In Consult" | "Labs Needed" | "Completed";
   waitingTime: string;
   profileImage?: string | null;
+  hasActiveMembership?: boolean;
+  membershipPlan?: string | null;
 }
 
 const mockPatients: QueuePatient[] = [];
@@ -49,7 +51,9 @@ export function PatientQueue({ onSelectPatient }: { onSelectPatient: (patientId:
               type: "Consultation",
               status: "Waiting",
               waitingTime: "10 mins", // Mocked waiting time for now
-              profileImage: p.profileImage || null
+              profileImage: p.profileImage || null,
+              hasActiveMembership: p.memberships?.some((m: any) => m.status === 'Active') || false,
+              membershipPlan: p.memberships?.find((m: any) => m.status === 'Active')?.planName || null,
             };
           });
           setPatients(queue);
@@ -76,7 +80,15 @@ export function PatientQueue({ onSelectPatient }: { onSelectPatient: (patientId:
             </div>
           )}
           <div>
-            <span className="font-bold text-text-primary block text-sm">{row.name}</span>
+            <span className="font-bold text-text-primary flex items-center gap-2 text-sm">
+              {row.name}
+              {row.hasActiveMembership && (
+                <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded-full flex items-center gap-1 uppercase tracking-wider">
+                  <Star className="w-2.5 h-2.5" />
+                  {row.membershipPlan}
+                </span>
+              )}
+            </span>
             <span className="text-[10px] text-text-secondary block mt-0.5">
               {row.age} yrs • {row.gender}
             </span>

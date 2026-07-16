@@ -106,6 +106,32 @@ export class AdminPortalController {
     };
   }
 
+  @Get('memberships')
+  @ApiOperation({
+    summary: 'List aggregated membership statistics',
+    description: 'Returns metrics about active and expired memberships.',
+  })
+  @ApiResponse({ status: 200, description: 'Membership statistics retrieved.' })
+  async getMemberships() {
+    const data = await this.adminService.getMembershipsStats();
+    return {
+      message: 'Membership statistics retrieved successfully',
+      data,
+    };
+  }
+
+  @Get('payments')
+  @ApiOperation({
+    summary: 'List all payments and transactions',
+  })
+  async getPayments() {
+    const data = await this.adminService.getPayments();
+    return {
+      message: 'Payments retrieved successfully',
+      data,
+    };
+  }
+
   @Get('reports')
   @ApiOperation({
     summary: 'Get administrative audit log report',

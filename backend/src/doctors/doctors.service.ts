@@ -63,6 +63,7 @@ export class DoctorsService {
         patient: {
           include: {
             user: true,
+            memberships: true,
           }
         }
       }
