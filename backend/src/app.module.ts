@@ -26,6 +26,7 @@ import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     PaymentsModule,
     RealtimeModule,
     ReviewsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

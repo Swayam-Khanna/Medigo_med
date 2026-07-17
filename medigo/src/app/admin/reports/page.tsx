@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { api } from "@/lib/api";
 import { BarChart4, Download, FileText, ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -41,6 +42,25 @@ export default function AdminReportsPage() {
     }, 1000);
   };
 
+  const [chartData, setChartData] = useState<{ label: string, value: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchReports = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/api/v1/reports/revenue?interval=${activeReportTab}`);
+        setChartData(res.data || []);
+      } catch (err) {
+        console.error('Failed to fetch reports:', err);
+        show("Failed to load report data", "error");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchReports();
+  }, [activeReportTab]);
+
   const patientGrowthTrend = [
     { label: "Jan", value: 450 },
     { label: "Feb", value: 580 },
@@ -48,14 +68,6 @@ export default function AdminReportsPage() {
     { label: "Apr", value: 890 },
     { label: "May", value: 1100 },
     { label: "Jun", value: 1248 }
-  ];
-
-  const mrrTrend = [
-    { label: "Jan", value: 67000 },
-    { label: "Feb", value: 86000 },
-    { label: "Mar", value: 98000 },
-    { label: "Apr", value: 112000 },
-    { label: "May", value: 124500 }
   ];
 
   return (
@@ -109,7 +121,13 @@ export default function AdminReportsPage() {
               <Badge variant="success" size="sm">Metabolic Audited</Badge>
             </div>
             <div className="flex-1 flex items-center justify-center pt-2">
-              <AreaChart data={mrrTrend} height={220} color="#3B82F6" />
+              {loading ? (
+                <div className="h-[220px] w-full flex items-center justify-center text-text-tertiary text-sm">
+                  Loading data...
+                </div>
+              ) : (
+                <AreaChart data={chartData} height={220} color="#3B82F6" />
+              )}
             </div>
           </Card>
         </div>

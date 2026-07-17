@@ -3,12 +3,14 @@ import { PaymentsService } from './payments.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RequestUser } from '../common/decorators/user.decorator';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Controller('api/v1/payments')
 export class PaymentsController {
   constructor(
     private readonly paymentsService: PaymentsService,
     private readonly appointmentsService: AppointmentsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   @Post('create-order')
@@ -52,6 +54,13 @@ export class PaymentsController {
       appointmentDetails.appointmentTime,
       appointmentDetails.consultationType,
       paymentId,
+    );
+
+    // 3. Notify Admins
+    await this.notificationsService.notifyAdmins(
+      'New Payment Received',
+      `Payment received for appointment ${appointment.id}. Plan Price: Paid.`,
+      'Audit'
     );
 
     return {
